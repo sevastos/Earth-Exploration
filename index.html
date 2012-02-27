@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+    <head>
+        <title>HTML 5 Orientation demo based on Three.js</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+        <link href="assets/main.css" rel="stylesheet" type="text/css" >
+
+        <script src="three/Three.js"></script>
+        <script src="three/Detector.js"></script>
+        <script src="three/THREEx.WindowResize.js"></script>
+    </head>
+<body>
+    <div id="container"></div>
+    <div id="txt">
+        <span id="title">EXPLORATION</span>
+        <p id="help"></p>
+        <div id="by">by <a href="http://smas.gr" rel="nofollow">Sev</a></div>
+    </div>
+    
+    <script type="text/javascript">
+        var rotX  = 0, rotY  = 0, rotZ  = 0,
+            oRotX = 0, oRotY = 0, oRotZ = 0,
+            gyrA  = 0, gyrB  = 0, gyrG  = 5;
+            oGyrA = 0, oGyrB = 0, oGyrG = 5,
+            orientationChanged = false;
+        
+        var motionSupport = (typeof window.ondevicemotion != 'undefined');
+        
+        var camera, scene, renderer, composer;
+        var earth;
+
+        if( !init() )    animate();
+
+        // Init the scene
+        function init(){
+            
+            if( Detector.webgl ){
+                renderer = new THREE.WebGLRenderer({
+                    antialias                : true,    // to get smoother output
+                    preserveDrawingBuffer    : true    // screenshot
+                });
+            }else{
+                Detector.addGetWebGLMessage();
+                return;
+            }
+
+            document.getElementById('container').appendChild(renderer.domElement);
+
+            // Scene
+            scene = new THREE.Scene();
+
+            // In the beginning Earth was created
+            earth = new THREE.Mesh(
+                new THREE.SphereGeometry(  1.2, 27, 17, false ),
+                new THREE.MeshBasicMaterial( {
+                    // Public domain image from http://en.wikipedia.org/wiki/File:Flat_earth_night.png
+                    map: THREE.ImageUtils.loadTexture( 'assets/flat-earth-night.jpg'),
+                    doubleSided: false, 
+                    wireframe: false,
+                    overdraw: true
+                })
+            );
+            scene.add(earth);            
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(35, 2, 1, 10000 );
+            camera.position.set(0, 0, 5);
+            scene.add(camera);
+
+            // Transparently support window resize
+            if(!motionSupport){
+                THREEx.WindowResize.bind(renderer, camera);
+            }
+
+        }
+
+        // Animation loop
+        function animate() {
+            // Loop on request animation loop - Bless Paul
+            requestAnimationFrame( animate );
+
+            // Do the rendering
+            render();
+        }
+
+        // Render the scene
+        function render() {
+            // Variable which is increased by Math.PI every second
+            // for the autorotation of sensor-less devices
+            var PIseconds = Date.now() * Math.PI;
+
+            // Animate all objects
+            for( var i = 0; i < scene.objects.length; i ++ ){
+                if(motionSupport){
+                    scene.objects[ i ].rotation.z = rotZ;
+                    scene.objects[ i ].rotation.y = oGyrA * 0.1;
+                    scene.objects[ i ].rotation.x = rotX;
+                }else{ //Auto rotate
+                    scene.objects[ i ].rotation.y = PIseconds*0.0001 * (i % 2 ? 1 : -1);
+                }
+            }
+
+            // Actually render the scene
+            renderer.render( scene, camera );
+        }
+                        
+        // Accelerometer
+        window.addEventListener('devicemotion', function(e) { //DeviceMotionEvent
+            oRotX = (e.accelerationIncludingGravity.x);
+            oRotY = (e.accelerationIncludingGravity.y);
+            oRotZ = (e.accelerationIncludingGravity.z);
+            
+            //Smoothing
+            rotX = Math.round(oRotX * 100) / 100;
+            rotY = Math.round(oRotY * 100) / 100;
+            rotZ = Math.round(oRotZ * 100) / 100;
+            
+            if (e.rotationRate != null) {
+                gyrA = e.rotationRate.alpha;
+                gyrB = e.rotationRate.beta;
+                gyrG = e.rotationRate.gamma;
+                setCameraPos(gyrA, gyrB, gyrG);
+            }
+        });
+        
+        // Gyroscope
+        window.addEventListener('deviceorientation', function(e) {
+            oGyrA = gyrA = e.alpha;
+            oGyrB = gyrB = e.beta;
+            oGryG = gyrG = e.gamma;
+
+            setCameraPos(gyrA, gyrB, gyrG);
+            camera.lookAt( scene.position );
+        });
+
+        /**
+         *  Camera position (User's earth rotation)
+         */
+        function setCameraPos(a, b, c){
+            if(isLandscape()){
+                    if(oRotZ < 0) oRotZ = 0;
+                    y = 20 - ((1-oRotZ) * 19.5);
+            }else{
+                    if(typeof b != 'undefined'){
+                            minVal = 0;
+                            maxVal = 100;
+                            if(b > maxVal) b = maxVal;
+                            if(b < minVal) b = minVal;
+                            y = 20 - (b / (maxVal-minVal) * 20);
+                    }
+            }                
+            
+            camera.position.y = y;
+            camera.lookAt( scene.position );                
+        }
+        
+        function isLandscape(){
+            return (window.innerHeight < window.innerWidth);
+        }
+        
+        function _refreshSize(){
+            if(!motionSupport){
+               renderer.setSize( window.innerWidth, window.innerHeight );
+            }
+        }
+
+        window.addEventListener('resize', _refreshSize);
+        
+        window.addEventListener('orientationchange', function(){
+            orientationChanged = true;
+            document.getElementById('help').innerHTML = '';
+        });
+        
+        window.addEventListener('load', function(){
+            _refreshSize();
+
+            // Help text
+            setTimeout(function(){
+                document.getElementById('help').innerHTML = 'Try moving around<br/><em>The Earth is getting bigger as you move the device closer to you</em>';
+            }, 1000);
+            setTimeout(function(){
+                document.getElementById('help').innerHTML = '';
+            }, 5000);
+            setTimeout(function(){
+                if(!orientationChanged){
+                    document.getElementById('help').innerHTML = 'Wide screen for your leisure<br/><em>Hmm... I wonder what will happen if you rotate to landscape mode...</em>';
+                }
+            }, 8000);
+            setTimeout(function(){
+                if(!orientationChanged){
+                    document.getElementById('help').innerHTML = '';
+                }
+            }, 15000);
+        });
+        
+    </script>
+</body>
+</html>
